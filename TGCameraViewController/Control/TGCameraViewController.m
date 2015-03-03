@@ -62,6 +62,7 @@
 - (void)deviceOrientationDidChangeNotification;
 - (AVCaptureVideoOrientation)videoOrientationForDeviceOrientation:(UIDeviceOrientation)deviceOrientation;
 - (void)viewWillDisappearWithCompletion:(void (^)(void))completion;
+- (void)getLatestPhoto;
 
 @end
 
@@ -72,15 +73,15 @@
 - (void)viewDidLoad
 {
     [super viewDidLoad];
-    
+
     if (CGRectGetHeight([[UIScreen mainScreen] bounds]) <= 480) {
         _topViewHeight.constant = 0;
     }
-    
+
     _camera = [TGCamera cameraWithFlashButton:_flashButton];
-    
+
     _captureView.backgroundColor = [UIColor clearColor];
-    
+
     _topLeftView.transform = CGAffineTransformMakeRotation(0);
     _topRightView.transform = CGAffineTransformMakeRotation(M_PI_2);
     _bottomLeftView.transform = CGAffineTransformMakeRotation(-M_PI_2);
@@ -90,21 +91,21 @@
 - (void)viewWillAppear:(BOOL)animated
 {
     [super viewWillAppear:animated];
-    
+
     [[NSNotificationCenter defaultCenter] addObserver:self
                                              selector:@selector(deviceOrientationDidChangeNotification)
                                                  name:UIDeviceOrientationDidChangeNotification
                                                object:nil];
-    
+
     _separatorView.hidden = NO;
-    
+
     _actionsView.hidden = YES;
-    
+
     _topLeftView.hidden =
     _topRightView.hidden =
     _bottomLeftView.hidden =
     _bottomRightView.hidden = YES;
-    
+
     _gridButton.enabled =
     _toggleButton.enabled =
     _shotButton.enabled =
@@ -115,40 +116,87 @@
 - (void)viewDidAppear:(BOOL)animated
 {
     [super viewDidAppear:animated];
-    
+
     [self deviceOrientationDidChangeNotification];
-    
+
     [_camera startRunning];
-    
+
     _separatorView.hidden = YES;
-    
+
     [TGCameraSlideView hideSlideUpView:_slideUpView slideDownView:_slideDownView atView:_captureView completion:^{
         _topLeftView.hidden =
         _topRightView.hidden =
         _bottomLeftView.hidden =
         _bottomRightView.hidden = NO;
-        
+
         _actionsView.hidden = NO;
-        
+
         _gridButton.enabled =
         _toggleButton.enabled =
         _shotButton.enabled =
         _albumButton.enabled =
         _flashButton.enabled = YES;
     }];
-     
+
     if (_wasLoaded == NO) {
         _wasLoaded = YES;
        [_camera insertSublayerWithCaptureView:_captureView atRootView:self.view];
     }
+
+    // get the latest image from the album
+    ALAuthorizationStatus status = [ALAssetsLibrary authorizationStatus];
+    if (status != ALAuthorizationStatusDenied) {
+        // access to album is authorised
+        [self getLatestPhoto];
+    }
+}
+
+// get the latest image from the album
+-(void)getLatestPhoto
+{
+    NSLog(@"MMM TGCameraViewController - getLatestPhoto");
+    ALAssetsLibrary *library = [[ALAssetsLibrary alloc] init];
+
+    // Enumerate just the photos and videos group by using ALAssetsGroupSavedPhotos.
+    [library enumerateGroupsWithTypes:ALAssetsGroupSavedPhotos usingBlock:^(ALAssetsGroup *group, BOOL *stop) {
+
+        // Within the group enumeration block, filter to enumerate just photos.
+        [group setAssetsFilter:[ALAssetsFilter allPhotos]];
+
+        // For this example, we're only interested in the last item [group numberOfAssets]-1 = last.
+        if ([group numberOfAssets] > 0) {
+
+            [group enumerateAssetsAtIndexes:[NSIndexSet indexSetWithIndex:[group numberOfAssets]-1]
+                                    options:0
+                                 usingBlock:^(ALAsset *alAsset, NSUInteger index, BOOL *innerStop) {
+
+                                     // The end of the enumeration is signaled by asset == nil.
+                                     if (alAsset) {
+                                         ALAssetRepresentation *representation = [alAsset defaultRepresentation];
+                                         // Do something interesting with the AV asset.
+                                         UIImage *img = [UIImage imageWithCGImage:[representation fullScreenImage]];
+
+                                         // use the photo
+                                         [_albumButton setImage:img forState:UIControlStateNormal];
+
+                                         // we only need the first (most recent) photo -- stop the enumeration
+                                         *innerStop = YES;
+                                     }
+                                 }];
+        }
+    }
+    failureBlock: ^(NSError *error) {
+       // Typically you should handle an error more gracefully than this.
+       NSLog(@"No groups");
+    }];
 }
 
 - (void)viewDidDisappear:(BOOL)animated
 {
     [super viewDidDisappear:animated];
-    
+
     [[NSNotificationCenter defaultCenter] removeObserver:self];
-    
+
     [_camera stopRunning];
 }
 
@@ -187,11 +235,11 @@
 - (void)imagePickerController:(UIImagePickerController *)picker didFinishPickingMediaWithInfo:(NSDictionary *)info
 {
     UIImage *photo = [TGAlbum imageWithMediaInfo:info];
-    
+
     TGPhotoViewController *viewController = [TGPhotoViewController newWithDelegate:_delegate photo:photo];
     [viewController setAlbumPhoto:YES];
     [self.navigationController pushViewController:viewController animated:NO];
-    
+
     [self dismissViewControllerAnimated:YES completion:nil];
 }
 
@@ -224,10 +272,10 @@
 {
     _shotButton.enabled =
     _albumButton.enabled = NO;
-    
+
     UIDeviceOrientation deviceOrientation = [[UIDevice currentDevice] orientation];
     AVCaptureVideoOrientation videoOrientation = [self videoOrientationForDeviceOrientation:deviceOrientation];
-    
+
     [self viewWillDisappearWithCompletion:^{
         [_camera takePhotoWithCaptureView:_captureView videoOrientation:videoOrientation cropSize:_captureView.frame.size
         completion:^(UIImage *photo) {
@@ -241,7 +289,7 @@
 {
     _shotButton.enabled =
     _albumButton.enabled = NO;
-    
+
     [self viewWillDisappearWithCompletion:^{
         UIImagePickerController *pickerController = [TGAlbum imagePickerControllerWithDelegate:self];
         [self presentViewController:pickerController animated:YES completion:nil];
@@ -266,31 +314,31 @@
 {
     UIDeviceOrientation orientation = [UIDevice.currentDevice orientation];
     NSInteger degress;
-    
+
     switch (orientation) {
         case UIDeviceOrientationFaceUp:
         case UIDeviceOrientationPortrait:
         case UIDeviceOrientationUnknown:
             degress = 0;
             break;
-            
+
         case UIDeviceOrientationLandscapeLeft:
             degress = 90;
             break;
-            
+
         case UIDeviceOrientationFaceDown:
         case UIDeviceOrientationPortraitUpsideDown:
             degress = 180;
             break;
-            
+
         case UIDeviceOrientationLandscapeRight:
             degress = 270;
             break;
     }
-    
+
     CGFloat radians = degress * M_PI / 180;
     CGAffineTransform transform = CGAffineTransformMakeRotation(radians);
-    
+
     [UIView animateWithDuration:.5f animations:^{
         _gridButton.transform =
         _toggleButton.transform =
@@ -302,27 +350,27 @@
 - (AVCaptureVideoOrientation)videoOrientationForDeviceOrientation:(UIDeviceOrientation)deviceOrientation
 {
     AVCaptureVideoOrientation result = (AVCaptureVideoOrientation) deviceOrientation;
-    
+
     switch (deviceOrientation) {
         case UIDeviceOrientationLandscapeLeft:
             result = AVCaptureVideoOrientationLandscapeRight;
             break;
-            
+
         case UIDeviceOrientationLandscapeRight:
             result = AVCaptureVideoOrientationLandscapeLeft;
             break;
-            
+
         default:
             break;
     }
-    
+
     return result;
 }
 
 - (void)viewWillDisappearWithCompletion:(void (^)(void))completion
 {
     _actionsView.hidden = YES;
-    
+
     [TGCameraSlideView showSlideUpView:_slideUpView slideDownView:_slideDownView atView:_captureView completion:^{
         completion();
     }];
