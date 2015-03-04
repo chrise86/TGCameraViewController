@@ -153,7 +153,7 @@ static NSString* const kTGCacheVignetteKey = @"TGCacheVignetteKey";
             }];
         };
 
-        if ([[TGCamera getOption:kTGCameraOptionSaveImageToAlbum] boolValue] && status != ALAuthorizationStatusDenied) {
+        if (!_albumPhoto && [[TGCamera getOption:kTGCameraOptionSaveImageToAlbum] boolValue] && status != ALAuthorizationStatusDenied) {
             [library saveImage:_photo resultBlock:^(NSURL *assetURL) {
                 if ([_delegate respondsToSelector:@selector(cameraDidSavePhotoAtPath:)]) {
                     [_delegate cameraDidSavePhotoAtPath:assetURL];
